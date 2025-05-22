@@ -647,6 +647,7 @@ pub async fn freebind_connect(
         addr: SocketAddr,
         socket_factory: &(dyn SocketFactory + Send + Sync),
     ) -> io::Result<TcpStream> {
+        tracing::debug!(?local, %addr, "attempting freebind_connect");
         let create_socket = |is_ipv4: bool| {
             if is_ipv4 {
                 socket_factory.new_tcp_v4()
@@ -659,14 +660,24 @@ pub async fn freebind_connect(
             None => {
                 let socket = create_socket(addr.is_ipv4())?;
                 trace!(dest=%addr, "no local address, connect directly");
-                Ok(socket.connect(addr).await?)
+                let connect_result = socket.connect(addr).await;
+                match &connect_result {
+                    Ok(stream) => tracing::debug!(%addr, ?stream, "successfully connected without local bind"),
+                    Err(e) => tracing::warn!(%addr, error=%e, "failed to connect without local bind"),
+                }
+                Ok(connect_result?)
             }
             // TODO: Need figure out how to handle case of loadbalancing to itself.
             //       We use ztunnel addr instead, otherwise app side will be confused.
             Some(src) if src == socket::to_canonical(addr).ip() => {
                 let socket = create_socket(addr.is_ipv4())?;
                 trace!(%src, dest=%addr, "dest and source are the same, connect directly");
-                Ok(socket.connect(addr).await?)
+                let connect_result = socket.connect(addr).await;
+                match &connect_result {
+                    Ok(stream) => tracing::debug!(%src, %addr, ?stream, "successfully connected (source is destination)"),
+                    Err(e) => tracing::warn!(%src, %addr, error=%e, "failed to connect (source is destination)"),
+                }
+                Ok(connect_result?)
             }
             Some(src) => {
                 let socket = create_socket(src.is_ipv4())?;
@@ -675,12 +686,17 @@ pub async fn freebind_connect(
                     Err(err) => warn!("failed to set freebind: {:?}", err),
                     _ => {
                         if let Err(err) = socket.bind(local_addr) {
-                            warn!("failed to bind local addr: {:?}", err)
+                            tracing::warn!(%local_addr, error=%err, "failed to bind local_addr for freebind_connect");
                         }
                     }
                 };
                 trace!(%src, dest=%addr, "connect with source IP");
-                Ok(socket.connect(addr).await?)
+                let connect_result = socket.connect(addr).await;
+                match &connect_result {
+                    Ok(stream) => tracing::debug!(%src, %addr, ?stream, "successfully connected with freebind"),
+                    Err(e) => tracing::warn!(%src, %addr, error=%e, "failed to connect with freebind"),
+                }
+                Ok(connect_result?)
             }
         }
     }

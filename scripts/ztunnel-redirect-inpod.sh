@@ -4,6 +4,7 @@
 
 set -ex
 
+echo "Attempting to restore iptables rules..."
 # CONNMARK is needed to make original src work. we set conn mark on prerouting. this is will not effect connections
 # from ztunnel to outside the pod, which will go on OUTPUT chain.
 # as we are in the pod ns, we can use whatever iptables is default.
@@ -21,6 +22,7 @@ iptables-restore --wait 10 --noflush <<EOF
 -A ISTIO_OUTPUT -m connmark --mark 0x111/0xfff -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff
 -A ISTIO_PRERT -m mark --mark 0x539/0xfff -j CONNMARK --set-xmark 0x111/0xfff
 COMMIT
+echo "Successfully applied *mangle table rules."
 *nat
 :PREROUTING ACCEPT [0:0]
 :INPUT ACCEPT [0:0]
@@ -39,9 +41,12 @@ COMMIT
 -A ISTIO_PRERT -s 169.254.7.127/32 -p tcp -m tcp -j ACCEPT
 -A ISTIO_PRERT ! -d 127.0.0.1/32 -p tcp ! --dport 15008 -m mark ! --mark 0x539/0xfff -j REDIRECT --to-ports 15006
 COMMIT
+echo "Successfully applied *nat table rules."
 EOF
 
+echo "Attempting to add local route for table 100..."
 ip route add local 0.0.0.0/0 dev lo table 100 || :
 
 # tproxy and original src
+echo "Attempting to add firewall rule for mark 0x111/0xfff..."
 ip rule add fwmark 0x111/0xfff pref 32764 lookup 100 || :

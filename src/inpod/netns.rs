@@ -79,10 +79,19 @@ impl InpodNetns {
     where
         F: FnOnce() -> T,
     {
+        tracing::debug!(workload_netns_id = ?self.inner.netns_id, "switching to workload netns");
         setns(&self.inner.netns, CloneFlags::CLONE_NEWNET)
             .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
         let ret = f();
         setns(&self.inner.cur_netns, CloneFlags::CLONE_NEWNET).expect("this must never fail");
+        match nix::sys::stat::fstat(self.inner.cur_netns.as_raw_fd()) {
+            Ok(stat) => {
+                tracing::debug!(original_netns_id = ?NetnsID{inode: stat.st_ino, dev: stat.st_dev}, "switched back to original netns");
+            }
+            Err(e) => {
+                tracing::debug!(error = ?e, "switched back to original netns, but failed to get original netns_id");
+            }
+        }
         Ok(ret)
     }
 }
