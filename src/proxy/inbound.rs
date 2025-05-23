@@ -55,15 +55,15 @@ pub struct Inbound {
 impl Inbound {
     pub(crate) async fn new(pi: Arc<ProxyInputs>, drain: DrainWatcher) -> Result<Inbound, Error> {
         let inbound_addr = pi.cfg.inbound_addr;
-        tracing::info!(%inbound_addr, "attempting to bind inbound listener");
+        tracing::info!(target: "ztunnel_inbound_proxy", %inbound_addr, "attempting to bind inbound listener");
         let listener = pi
             .socket_factory
             .tcp_bind(inbound_addr)
             .map_err(|e| Error::Bind(inbound_addr, e))?;
         let local_addr = listener.local_addr();
-        tracing::info!(%local_addr, "inbound listener bound");
+        tracing::info!(target: "ztunnel_inbound_proxy", %local_addr, "inbound listener bound");
         let enable_orig_src = super::maybe_set_transparent(&pi, &listener)?;
-        tracing::info!(%enable_orig_src, transparent_mode_enabled = %enable_orig_src, "transparent mode for inbound listener");
+        tracing::info!(target: "ztunnel_inbound_proxy", %enable_orig_src, transparent_mode_enabled = %enable_orig_src, "transparent mode for inbound listener");
 
         info!(
             address=%local_addr,
@@ -107,7 +107,7 @@ impl Inbound {
                 };
                 let src = to_canonical(remote_addr);
                 let dst = to_canonical(raw_socket.local_addr().expect("local_addr available"));
-                tracing::info!(source=%src, destination=%dst, "inbound connection accepted");
+                tracing::info!(target: "ztunnel_inbound_proxy", source=%src, destination=%dst, "inbound connection accepted");
 
                 let start = Instant::now();
                 let drain = drain.clone();
@@ -194,7 +194,7 @@ impl Inbound {
         enable_original_source: bool,
         req: H2Request,
     ) {
-        tracing::debug!(?conn, uri = ?req.uri(), method = ?req.method(), headers = ?req.headers(), "inbound serve_connect");
+        tracing::debug!(target: "ztunnel_inbound_proxy", ?conn, uri = ?req.uri(), method = ?req.method(), headers = ?req.headers(), "inbound serve_connect");
         let src = conn.src;
         let dst = conn.dst;
 
@@ -209,10 +209,10 @@ impl Inbound {
             Err(InboundError(e, code)) => {
                 // At this point in processing, we never built up full context to log a complete access log.
                 // Instead, just log a minimal error line.
-                tracing::warn!(%conn, error=%e, status_code=%code, "failed to build inbound request");
+                tracing::warn!(target: "ztunnel_inbound_proxy", %conn, error=%e, status_code=%code, "failed to build inbound request");
                 metrics::log_early_deny(src, dst, Reporter::destination, e);
                 if let Err(err) = req.send_error(build_response(code)) {
-                    tracing::warn!("failed to send HTTP response: {err}");
+                    tracing::warn!(target: "ztunnel_inbound_proxy", error=%err, "failed to send HTTP error response to client");
                 }
                 return;
             }
@@ -286,7 +286,7 @@ impl Inbound {
             Err(InboundFlagError(err, flag, code)) => {
                 ri.result_tracker.record_with_flag(Err(err), flag);
                 if let Err(err) = req.send_error(build_response(code)) {
-                    tracing::warn!("failed to send HTTP response: {err}");
+                    tracing::warn!(target: "ztunnel_inbound_proxy", error=%err, %flag, status_code=%code, "failed to establish upstream connection or send error response");
                 }
                 return;
             }
@@ -334,10 +334,10 @@ impl Inbound {
         conn: Connection,
         req: &T,
     ) -> Result<InboundRequest, InboundError> {
-        tracing::debug!(?conn, uri = ?req.uri(), method = ?req.method(), headers = ?req.headers(), "building inbound request");
+        tracing::debug!(target: "ztunnel_inbound_proxy", ?conn, uri = ?req.uri(), method = ?req.method(), headers = ?req.headers(), "building inbound request");
         if req.method() != Method::CONNECT {
             let e = Error::NonConnectMethod(req.method().to_string());
-            tracing::warn!(error = %e, status_code = %StatusCode::BAD_REQUEST, "inbound request build failed, non-CONNECT method");
+            tracing::warn!(target: "ztunnel_inbound_proxy", error = %e, status_code = %StatusCode::BAD_REQUEST, "inbound request build failed, non-CONNECT method");
             return Err(InboundError(e, StatusCode::BAD_REQUEST));
         }
 
@@ -449,7 +449,7 @@ impl Inbound {
             upstream_addr,
             tunnel_request,
         };
-        tracing::debug!(inbound_request = ?ri, "successfully built inbound request");
+        tracing::debug!(target: "ztunnel_inbound_proxy", inbound_request = ?ri, "successfully built inbound request");
         Ok(ri)
     }
 

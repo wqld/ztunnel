@@ -647,7 +647,7 @@ pub async fn freebind_connect(
         addr: SocketAddr,
         socket_factory: &(dyn SocketFactory + Send + Sync),
     ) -> io::Result<TcpStream> {
-        tracing::debug!(?local, %addr, "attempting freebind_connect");
+        tracing::debug!(target: "ztunnel_proxy_connect", ?local, %addr, "attempting freebind_connect");
         let create_socket = |is_ipv4: bool| {
             if is_ipv4 {
                 socket_factory.new_tcp_v4()
@@ -662,8 +662,8 @@ pub async fn freebind_connect(
                 trace!(dest=%addr, "no local address, connect directly");
                 let connect_result = socket.connect(addr).await;
                 match &connect_result {
-                    Ok(stream) => tracing::debug!(%addr, ?stream, "successfully connected without local bind"),
-                    Err(e) => tracing::warn!(%addr, error=%e, "failed to connect without local bind"),
+                    Ok(stream) => tracing::debug!(target: "ztunnel_proxy_connect", %addr, ?stream, "successfully connected without local bind"),
+                    Err(e) => tracing::warn!(target: "ztunnel_proxy_connect", %addr, error=%e, "failed to connect without local bind"),
                 }
                 Ok(connect_result?)
             }
@@ -674,8 +674,8 @@ pub async fn freebind_connect(
                 trace!(%src, dest=%addr, "dest and source are the same, connect directly");
                 let connect_result = socket.connect(addr).await;
                 match &connect_result {
-                    Ok(stream) => tracing::debug!(%src, %addr, ?stream, "successfully connected (source is destination)"),
-                    Err(e) => tracing::warn!(%src, %addr, error=%e, "failed to connect (source is destination)"),
+                    Ok(stream) => tracing::debug!(target: "ztunnel_proxy_connect", %src, %addr, ?stream, "successfully connected (source is destination)"),
+                    Err(e) => tracing::warn!(target: "ztunnel_proxy_connect", %src, %addr, error=%e, "failed to connect (source is destination)"),
                 }
                 Ok(connect_result?)
             }
@@ -686,15 +686,15 @@ pub async fn freebind_connect(
                     Err(err) => warn!("failed to set freebind: {:?}", err),
                     _ => {
                         if let Err(err) = socket.bind(local_addr) {
-                            tracing::warn!(%local_addr, error=%err, "failed to bind local_addr for freebind_connect");
+                            tracing::warn!(target: "ztunnel_proxy_connect", %local_addr, error=%err, "failed to bind local_addr for freebind_connect");
                         }
                     }
                 };
                 trace!(%src, dest=%addr, "connect with source IP");
                 let connect_result = socket.connect(addr).await;
                 match &connect_result {
-                    Ok(stream) => tracing::debug!(%src, %addr, ?stream, "successfully connected with freebind"),
-                    Err(e) => tracing::warn!(%src, %addr, error=%e, "failed to connect with freebind"),
+                    Ok(stream) => tracing::debug!(target: "ztunnel_proxy_connect", %src, %addr, ?stream, "successfully connected with freebind"),
+                    Err(e) => tracing::warn!(target: "ztunnel_proxy_connect", %src, %addr, error=%e, "failed to connect with freebind"),
                 }
                 Ok(connect_result?)
             }

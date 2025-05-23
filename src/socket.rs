@@ -29,7 +29,7 @@ use {
 
 #[cfg(target_os = "linux")]
 pub fn set_freebind_and_transparent(socket: &TcpSocket) -> io::Result<()> {
-    tracing::debug!(?socket, "set_freebind_and_transparent");
+    tracing::debug!(target: "ztunnel_socket", ?socket, "set_freebind_and_transparent");
     let socket_ref = SockRef::from(socket);
     match socket_ref.domain()? {
         Domain::IPV4 => {
@@ -60,23 +60,23 @@ pub fn orig_dst_addr_or_default(stream: &tokio::net::TcpStream) -> SocketAddr {
 
 #[cfg(target_os = "linux")]
 fn orig_dst_addr(stream: &tokio::net::TcpStream) -> io::Result<SocketAddr> {
-    tracing::debug!(peer = ?stream.peer_addr(), local = ?stream.local_addr(), "orig_dst_addr");
+    tracing::debug!(target: "ztunnel_socket", peer = ?stream.peer_addr(), local = ?stream.local_addr(), "orig_dst_addr");
     let sock = SockRef::from(stream);
     // Dual-stack IPv4/IPv6 sockets require us to check both options.
     match linux::original_dst(&sock) {
         Ok(addr) => {
             let addr = addr.as_socket().expect("failed to convert to SocketAddr");
-            tracing::debug!(?addr, "original_dst");
+            tracing::debug!(target: "ztunnel_socket", ?addr, "original_dst");
             Ok(addr)
         }
         Err(e4) => match linux::original_dst_ipv6(&sock) {
             Ok(addr) => {
                 let addr = addr.as_socket().expect("failed to convert to SocketAddr");
-                tracing::debug!(?addr, "original_dst_ipv6");
+                tracing::debug!(target: "ztunnel_socket", ?addr, "original_dst_ipv6");
                 Ok(addr)
             }
             Err(e6) => {
-                tracing::debug!(peer = ?stream.peer_addr(), local = ?stream.local_addr(), error_ipv4 = ?e4, error_ipv6 = ?e6, "failed to read SO_ORIGINAL_DST");
+                tracing::debug!(target: "ztunnel_socket", peer = ?stream.peer_addr(), local = ?stream.local_addr(), error_ipv4 = ?e4, error_ipv6 = ?e6, "failed to read SO_ORIGINAL_DST");
                 if !sock.ip_transparent().unwrap_or(false) {
                     // In TPROXY mode, this is normal, so don't bother logging
                     warn!(
@@ -93,7 +93,7 @@ fn orig_dst_addr(stream: &tokio::net::TcpStream) -> io::Result<SocketAddr> {
 
 #[cfg(not(target_os = "linux"))]
 fn orig_dst_addr(stream: &tokio::net::TcpStream) -> io::Result<SocketAddr> {
-    tracing::debug!(peer = ?stream.peer_addr(), local = ?stream.local_addr(), "orig_dst_addr (not linux)");
+    tracing::debug!(target: "ztunnel_socket", peer = ?stream.peer_addr(), local = ?stream.local_addr(), "orig_dst_addr (not linux)");
     Err(Error::new(
         io::ErrorKind::Other,
         "SO_ORIGINAL_DST not supported on this operating system",
@@ -102,7 +102,7 @@ fn orig_dst_addr(stream: &tokio::net::TcpStream) -> io::Result<SocketAddr> {
 
 #[cfg(not(target_os = "linux"))]
 pub fn set_freebind_and_transparent(socket: &TcpSocket) -> io::Result<()> {
-    tracing::debug!(?socket, "set_freebind_and_transparent (not linux)");
+    tracing::debug!(target: "ztunnel_socket", ?socket, "set_freebind_and_transparent (not linux)");
     Err(Error::new(
         io::ErrorKind::Other,
         "IP_TRANSPARENT and IP_FREEBIND are not supported on this operating system",
@@ -132,7 +132,7 @@ mod linux {
     use tokio::io;
 
     pub fn set_ipv6_transparent(sock: &SockRef) -> io::Result<()> {
-        tracing::debug!(?sock, "set_ipv6_transparent");
+        tracing::debug!(target: "ztunnel_socket", ?sock, "set_ipv6_transparent");
         unsafe {
             let optval: libc::c_int = 1;
             let ret = libc::setsockopt(
@@ -174,7 +174,7 @@ impl Listener {
     pub async fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
         let (stream, remote) = self.0.accept().await?;
         stream.set_nodelay(true)?;
-        tracing::debug!(remote_addr = ?remote, local_addr = ?stream.local_addr(), "Listener accepted stream");
+        tracing::debug!(target: "ztunnel_socket", remote_addr = ?remote, local_addr = ?stream.local_addr(), "Listener accepted stream");
         Ok((stream, remote))
     }
 }
